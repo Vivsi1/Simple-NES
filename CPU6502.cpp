@@ -520,8 +520,11 @@ void CPU6502::execute()
         status.n = (((A >> 7) & 1) == 1 ? 1 : 0);
     }
     else if(opcode == 0x0B or opcode == 0x2B){
-        AND(address);
-        opcode & 0xF0 ? ROL(address) : ASL(address);
+        uint8_t m = read(address);   
+        A = A & m;                   
+        status.z = (A == 0 ? 1 : 0);
+        status.n = ((A & 0x80) != 0 ? 1 : 0);
+        status.c = status.n; 
     }
     else
     {
@@ -562,15 +565,14 @@ std::string CPU6502::debugStr()
 void CPU6502::ADC(uint16_t address)
 {
     uint8_t m = read(address);
-    uint16_t sum = uint16_t(A) + m + status.c;
-
-    status.c = (sum > 0xFF ? 1 : 0);
-    status.v = ((A ^ sum) & (m ^ sum) & 0x80 ? 1 : 0);
-
-    A = uint8_t(sum);
+    uint16_t temp = uint16_t(A) + uint16_t(m) + uint16_t(status.c);
+    status.c = (temp > 0xFF ? 1 : 0);
+    status.v = (~(A ^ m) & (A ^ temp) & 0x80 ? 1 : 0);
+    A = uint8_t(temp);
     status.z = (A == 0 ? 1 : 0);
-    status.n = ((A & 0x80) != 0 ? 1 : 0);
+    status.n = (A & 0x80 ? 1 : 0);
 }
+
 
 void CPU6502::AND(uint16_t address)
 {
@@ -901,6 +903,7 @@ void CPU6502::PLA(uint16_t)
 void CPU6502::PLP(uint16_t)
 {
     status.value = (pop() & 0xEF) | 0x20;
+    status.from_byte(status.value);
 }
 
 void CPU6502::ROL(uint16_t address)
@@ -929,6 +932,7 @@ void CPU6502::RTI(uint16_t)
 {
 
     status.value = (pop() & 0xEF) | 0x20;
+    status.from_byte(status.value);
     PC = pop16();
 }
 
@@ -1061,64 +1065,131 @@ void CPU6502::LAS(uint16_t address) {
 
 void CPU6502::AXS(uint16_t address) {
     uint8_t m = read(address);
-    uint8_t result = A - m;
-    status.c =  A >= m;
-    X = X & result;
+    uint8_t temp = (A & X) - m;   
+    status.c = ((A & X) >= m) ? 1 : 0;
+    X = temp;
     status.z = (X == 0 ? 1 : 0);
     status.n = ((X & 0x80) != 0 ? 1 : 0);
 }
 
-
 void CPU6502::SLO(uint16_t address)
 {
-    ASL(address);
-    ORA(address);
+    uint8_t m = read(address);
+    uint8_t result = m << 1;
+    status.c = (m & 0x80) != 0;
+    write(address, result);
+    A |= result;
+    status.z = (A == 0);
+    status.n = (A & 0x80) != 0;
 }
+
 void CPU6502::RLA(uint16_t address)
 {
-    ROL(address);
-    AND(address);
+    uint8_t m = read(address);
+    uint8_t result = (m << 1) | status.c;
+    status.c = (m & 0x80) != 0;
+    write(address, result);
+    A &= result;
+    status.z = (A == 0);
+    status.n = (A & 0x80) != 0;
 }
+
 void CPU6502::SRE(uint16_t address)
 {
-    LSR(address);
-    EOR(address);
+    uint8_t m = read(address);
+    status.c = (m & 0x01) != 0;
+    uint8_t result = m >> 1;
+    write(address, result);
+    A ^= result;
+    status.z = (A == 0);
+    status.n = (A & 0x80) != 0;
 }
+
 void CPU6502::ALR(uint16_t address)
 {
-    AND(address);
-    LSR(address);
+    uint8_t m = read(address);
+    uint8_t anded = A & m;
+    status.c = (anded & 0x01) != 0;
+    A = anded >> 1;
+    status.z = (A == 0);
+    status.n = (A & 0x80) != 0;
 }
+
 void CPU6502::RRA(uint16_t address)
 {
-    ROR(address);
-    ADC(address);
+    uint8_t m = read(address);
+    uint8_t rotated = (m >> 1) | (status.c << 7);
+    status.c = (m & 0x01) != 0;
+    write(address, rotated);
+
+    uint16_t temp = uint16_t(A) + uint16_t(rotated) + uint16_t(status.c);
+    status.c = (temp > 0xFF);
+    status.v = (~(A ^ rotated) & (A ^ temp) & 0x80) != 0;
+    A = uint8_t(temp);
+    status.z = (A == 0);
+    status.n = (A & 0x80) != 0;
 }
+
 void CPU6502::ARR(uint16_t address)
 {
-    AND(address);
-    ROR(address);
+    uint8_t m = read(address);
+    A &= m;
+    uint8_t oldA = A;
+    A = (A >> 1) | (status.c << 7);
+    status.c = (A & 0x40) >> 6;               
+    status.v = ((A >> 5) ^ (A >> 6)) & 1;     
+    status.z = (A == 0);
+    status.n = (A & 0x80) != 0;
 }
+
 void CPU6502::XAA(uint16_t address)
 {
-    TXA(address);
-    AND(address);
+    uint8_t m = read(address);
+    uint8_t temp = X & m;
+    if (temp < m)
+        temp &= 0xEF;  
+    if (temp & 0x01 == 0)
+        temp &= 0xFE;  
+    A = temp;
+    status.z = (A == 0);
+    status.n = (A & 0x80) != 0;
 }
+
+
+
 void CPU6502::LAX(uint16_t address)
 {
-    LDA(address);
-    LDX(address);
+    uint8_t m = read(address);
+    A = m;
+    X = m;
+    status.z = (A == 0);
+    status.n = (A & 0x80) != 0;
 }
+
 void CPU6502::DCP(uint16_t address)
 {
-    DEC(address);
-    CMP(address);
+    uint8_t m = read(address) - 1;
+    write(address, m);
+
+    uint16_t temp = uint16_t(A) - uint16_t(m);
+    status.c = (A >= m);
+    status.z = (temp == 0);
+    status.n = (temp & 0x80) != 0;
 }
+
 void CPU6502::ISC(uint16_t address)
 {
-    INC(address);
-    SBC(address);
+    uint8_t m = read(address) + 1;
+    write(address, m);
+
+    uint16_t temp = uint16_t(A) - uint16_t(m) - (1 - status.c);
+    status.c = (A >= (m + (1 - status.c)));
+    status.v = ((A ^ temp) & (~m ^ temp) & 0x80) != 0;
+    A = uint8_t(temp);
+    status.z = (A == 0);
+    status.n = (A & 0x80) != 0;
 }
+
 void CPU6502::ANC(uint16_t address){
-    //Already Implemented
+    // Already Implemented        
 }

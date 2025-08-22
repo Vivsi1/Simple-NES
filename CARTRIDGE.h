@@ -6,5 +6,7 @@
 using namespace std;
 
 class Cartridge{
-    Cartridge(const std::string& sFileName);
+    public:
+        Cartridge() = default;  
+        Cartridge(const std::string& sFileName);
 };
