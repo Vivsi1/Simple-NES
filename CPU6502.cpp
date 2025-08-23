@@ -336,7 +336,6 @@ void CPU6502::reset()
     SP = 0xFD;
     status.value = 0x24;
     cycles = 8;
-    bus->Initialise();
 }
 
 void CPU6502::nmi()
