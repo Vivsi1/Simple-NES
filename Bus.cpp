@@ -22,20 +22,20 @@ void Bus::Initialise()
 void Bus::CPUwrite(uint16_t addr, uint8_t data)
 {
     if (addr >= 0x0000 && addr <= 0xFFFF){
-        CPUmem[addr] = data;
+        CPUmem[addr % (2 * 1024)] = data;
     }
 }
 
 uint8_t Bus::CPUread(uint16_t addr)
 {
     if (addr >= 0x0000 && addr <= 0xFFFF)
-        return CPUmem[addr];
+        return CPUmem[addr % (2 * 1024)];
     return 0x00;
 }
 
 uint16_t Bus::CPUread16(uint16_t addr)
 {
-    uint8_t LoByte = CPUread(addr);
-    uint8_t HiByte = CPUread(addr + 1);
+    uint16_t LoByte = CPUread(addr);
+    uint16_t HiByte = CPUread(addr + 1);
     return LoByte | (HiByte << 8);
 }
