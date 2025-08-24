@@ -37,8 +37,6 @@ bool runTest(const json &test)
 {
     CPU6502 cpu;
     Bus bus;
-    bus.Initialise();
-    
 
     // --- Load initial registers ---
     cpu.PC = test["initial"]["pc"];

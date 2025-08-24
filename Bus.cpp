@@ -1,21 +1,15 @@
 #include "Bus.h"
 #include <cstring> 
 
-Bus::Bus()
-{
-    uint8_t CPUmem[2 * 1024] = {};
+
+Bus::Bus() {
+    memset(CPUmem, 0, sizeof(CPUmem));
+    memset(nametable, 0, sizeof(nametable));
+    memset(palette, 0, sizeof(palette));
 }
 
 void Bus::insertCartridge(const std::shared_ptr<Cartridge>& cartridge) {
     this->cartridge = cartridge;
-}
-
-void Bus::Initialise()
-{
-    for (int i = 0; i < 2 * 1024; i++)
-    {
-        CPUmem[i] = 0;
-    }
 }
 
 void Bus::CPUwrite(uint16_t addr, uint8_t data)

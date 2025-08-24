@@ -14,7 +14,6 @@ int main()
     std::cout << "Starting 6502 NES test suite (Cartridge + Mapper)..." << std::endl;
 
     Bus bus;
-    bus.Initialise();
     std::shared_ptr<Cartridge> cart = std::make_shared<Cartridge>("nestest.nes");
     if (!cart->isImageValid()) {
         std::cerr << "Failed to load cartridge!" << std::endl;

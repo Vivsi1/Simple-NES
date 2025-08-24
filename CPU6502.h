@@ -4,7 +4,6 @@
 #include <cstdint>
 using namespace std;
 
-class Bus;
 
 class CPU6502
 {
@@ -66,8 +65,6 @@ public:
     void setPc(std::uint16_t newPc);
     void execute();
     std::string debugStr();
-
-#include <cstdint>
 
     struct Status
     {
@@ -187,7 +184,6 @@ public:
     void ISC(uint16_t address);
 
     Bus* bus = nullptr;
-
     Status status{status.value = 0x24};
     uint8_t cycles = 8;
     int totalcycles = 8;

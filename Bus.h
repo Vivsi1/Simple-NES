@@ -10,11 +10,12 @@ class Bus
 {
 public:
     uint8_t CPUmem[2 * 1024];     
+    uint8_t nametable[0x800]; 
+    uint8_t palette[0x20];    
     Bus();
     CPU6502 cpu;
     PPU2C02 ppu;
     std::shared_ptr<Cartridge> cartridge;
-    void Initialise();                
     uint8_t CPUread(uint16_t addr);      
     void CPUwrite(uint16_t addr, uint8_t data); 
     uint16_t CPUread16(uint16_t addr);  

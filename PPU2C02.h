@@ -1,20 +1,29 @@
 #pragma once
 #include <cstdint>
 #include <array>
-#include "Cartridge.h"
+#include <memory>
 
-class PPU2C02
-{
+class Cartridge;
+
+class PPU2C02 {
 public:
-    PPU2C02() = default;
-
-    void connectCartridge(const std::shared_ptr<Cartridge>& cartridge) { this->cartridge = cartridge; }
-    void CPUwrite(uint16_t addr, uint8_t data);
+    void connectCartridge(const std::shared_ptr<Cartridge>& c) { cart = c; }
+    void    CPUwrite(uint16_t addr, uint8_t data);
     uint8_t CPUread(uint16_t addr);
     uint8_t PPUread(uint16_t addr);
-    void PPUwrite(uint16_t addr, uint8_t data);
-    std::shared_ptr<Cartridge> cartridge;
-    std::array<uint8_t, 0x800> nametable{}; 
-    std::array<uint8_t, 0x20> palette{};    
-    uint8_t reg[8]{};
+    void    PPUwrite(uint16_t addr, uint8_t data);
+    std::array<uint8_t, 0x800> vram{};    
+    std::array<uint8_t, 0x20>  palette{}; 
+    uint8_t  ppuctrl{};   
+    uint8_t  ppumask{};   
+    uint8_t  ppustatus{}; 
+    uint8_t  oamaddr{};   
+    uint8_t  readBuffer{};
+    uint16_t v{};   
+    uint16_t t{};   
+    uint8_t  x{};   
+    bool     w{};  
+    std::shared_ptr<Cartridge> cart;
+    uint16_t mapNametableAddr(uint16_t addr) const; // apply mirroring
+    uint16_t incAmount() const { return (ppuctrl & 0x04) ? 32 : 1; }
 };

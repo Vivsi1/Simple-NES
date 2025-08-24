@@ -17,6 +17,7 @@ Cartridge::Cartridge(const std::string &filename)
         char padding[5]; 
     } header;
 
+
     std::ifstream ifs(filename, std::ifstream::binary);
     if (!ifs.is_open()) { std::cerr << "Failed to open ROM\n"; return; }
 
@@ -42,6 +43,15 @@ Cartridge::Cartridge(const std::string &filename)
         ifs.read(reinterpret_cast<char*>(vCHRMemory.data()), vCHRMemory.size());
     }
 
+        if (header.flags6 & 0x08)
+    {
+        mirror = MIRROR::FOUR_SCREEN;
+    }
+    else
+    {
+        mirror = (header.flags6 & 0x01) ? MIRROR::VERTICAL : MIRROR::HORIZONTAL;
+    }
+
     ifs.close();
 
     switch (mapperID) {
@@ -54,6 +64,10 @@ Cartridge::Cartridge(const std::string &filename)
               << " | Mapper: " << (int)mapperID
               << " | PRG Banks: " << (int)header.prg_rom_chunks
               << " | CHR Banks: " << (int)header.chr_rom_chunks << "\n";
+}
+
+Cartridge::MIRROR Cartridge::getMirror(){
+    return mirror;
 }
 
 bool Cartridge::CPUread(uint16_t addr, uint8_t &data)
