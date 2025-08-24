@@ -14,6 +14,7 @@ public:
     void    PPUwrite(uint16_t addr, uint8_t data);
     std::array<uint8_t, 0x800> vram{};    
     std::array<uint8_t, 0x20>  palette{}; 
+    std::array<uint8_t, 256> oam{};  //just add it for now, its somehow related to foreground rendering
     uint8_t  ppuctrl{};   
     uint8_t  ppumask{};   
     uint8_t  ppustatus{}; 

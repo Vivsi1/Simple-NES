@@ -12,7 +12,7 @@ void PPU2C02::CPUwrite(uint16_t addr, uint8_t data) {
         case 0x2003: // OAMADDR
             oamaddr = data; break;
         case 0x2004: // OAMDATA
-            // Unimplemented
+            oam[oamaddr++] = data;
             break;
         case 0x2005: // PPUSCROLL
             if (!w) { x = data & 0x07; t = (t & 0xFFE0) | (data >> 3); w = true; }
@@ -39,7 +39,7 @@ uint8_t PPU2C02::CPUread(uint16_t addr) {
             w = false;          
             break;
         case 0x2004: // OAMDATA
-            // Unimplemented
+            data = oam[oamaddr];
             break;
         case 0x2007: // PPUDATA (buffered)
         {
