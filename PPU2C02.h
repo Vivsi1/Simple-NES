@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <array>
+#include <vector>
 #include <memory>
 
 class Cartridge;
@@ -12,14 +13,15 @@ public:
     uint8_t CPUread(uint16_t addr);
     uint8_t PPUread(uint16_t addr);
     void    PPUwrite(uint16_t addr, uint8_t data);
-    std::array<uint8_t, 0x800> vram{}; //Nametable + Attribute Table     
+    mutable std::vector<uint8_t> vram = std::vector<uint8_t>(2048); //Nametable + Attribute Table     
     std::array<uint8_t, 0x20>  palette{}; //Frame Palette
     std::array<uint8_t, 256> oam{};  //just add it for now, its somehow related to foreground rendering
+    
     struct Color {
     uint8_t r, g, b;
-};
+    };
 
-std::array<Color, 64> systempalette{
+    std::array<Color, 64> systempalette{
     Color{0x7C, 0x7C, 0x7C}, Color{0x00, 0x00, 0xFC}, Color{0x00, 0x00, 0xBC}, Color{0x44, 0x28, 0xBC},
     Color{0x94, 0x00, 0x84}, Color{0xA8, 0x00, 0x20}, Color{0xA8, 0x10, 0x00}, Color{0x88, 0x14, 0x00},
     Color{0x50, 0x30, 0x00}, Color{0x00, 0x78, 0x00}, Color{0x00, 0x68, 0x00}, Color{0x00, 0x58, 0x00},
@@ -36,8 +38,11 @@ std::array<Color, 64> systempalette{
     Color{0xF8, 0xB8, 0xF8}, Color{0xF8, 0xA4, 0xC0}, Color{0xF0, 0xD0, 0xB0}, Color{0xFC, 0xE0, 0xA8},
     Color{0xF8, 0xD8, 0x78}, Color{0xD8, 0xF8, 0x78}, Color{0xB8, 0xF8, 0xB8}, Color{0xB8, 0xF8, 0xD8},
     Color{0x00, 0xFC, 0xFC}, Color{0xF8, 0xD8, 0xF8}, Color{0x00, 0x00, 0x00}, Color{0x00, 0x00, 0x00}
-}; //Initialise NES system palette
-
+    }; //Initialise NES system palette
+    
+    int16_t scanline = 0; // -1 pre-render, 0-239 visible, 240 post, 241-260 vblank
+    int16_t cycle    = 0; // 0-340
+    bool    frame_complete = false; //Measure frame completion
     uint8_t  ppuctrl{};   
     uint8_t  ppumask{};   
     uint8_t  ppustatus{}; 

@@ -3,26 +3,26 @@
 
 void PPU2C02::CPUwrite(uint16_t addr, uint8_t data) {
     switch (addr & 0x0007) {
-        case 0x2000: // PPUCTRL
+        case 0: // PPUCTRL
             ppuctrl = data;
             t = (t & 0xF3FF) | ((data & 0x03) << 10); 
             break;
-        case 0x2001: // PPUMASK
+        case 1: // PPUMASK
             ppumask = data; break;
-        case 0x2003: // OAMADDR
+        case 3: // OAMADDR
             oamaddr = data; break;
-        case 0x2004: // OAMDATA
+        case 4: // OAMDATA
             oam[oamaddr++] = data;
             break;
-        case 0x2005: // PPUSCROLL
+        case 5: // PPUSCROLL
             if (!w) { x = data & 0x07; t = (t & 0xFFE0) | (data >> 3); w = true; }
             else     { t = (t & 0x8FFF) | ((data & 0x07) << 12); t = (t & 0xFC1F) | ((data & 0xF8) << 2); w = false; }
             break;
-        case 0x2006: // PPUADDR
+        case 6: // PPUADDR
             if (!w) { t = (t & 0x00FF) | ((uint16_t)(data & 0x3F) << 8); w = true; }
             else     { t = (t & 0xFF00) | data; v = t; w = false; }
             break;
-        case 0x2007: // PPUDATA
+        case 7: // PPUDATA
             PPUwrite(v, data);
             v += incAmount();
             break;
@@ -32,16 +32,16 @@ void PPU2C02::CPUwrite(uint16_t addr, uint8_t data) {
 
 uint8_t PPU2C02::CPUread(uint16_t addr) {
     uint8_t data = 0x00;
-    switch (addr & 0x2007) {
-        case 0x2002: // PPUSTATUS
-            data = (ppustatus & 0xE0);
+    switch (addr & 0x0007) {
+        case 2: // PPUSTATUS
+            data = (ppustatus & 0xE0) | (readBuffer & 0x1F);
             ppustatus &= ~0x80; 
-            w = false;          
+            w = false;
             break;
-        case 0x2004: // OAMDATA
+        case 4: // OAMDATA
             data = oam[oamaddr];
             break;
-        case 0x2007: // PPUDATA (buffered)
+        case 7: // PPUDATA (buffered)
         {
             uint16_t a = v & 0x3FFF;
             if (a < 0x3F00) {
@@ -107,11 +107,29 @@ uint16_t PPU2C02::mapNametableAddr(uint16_t addr) const {
     uint16_t table = (nt / 0x0400) & 0x03;   
     uint16_t offset = nt & 0x03FF;
     auto mir = cart ? cart->getMirror() : Cartridge::MIRROR::VERTICAL;
+    if(mir == Cartridge::MIRROR::FOUR_SCREEN){
+        vram.resize(4096);
+    }
+    uint16_t page = 0;
+    switch (mir) {
+        case Cartridge::MIRROR::VERTICAL:
+            page = table & 0x01;
+            break;
 
-    uint16_t page =
-        (mir == Cartridge::MIRROR::VERTICAL)   ? (table & 0x01)       
-      : (mir == Cartridge::MIRROR::HORIZONTAL) ? (table >> 1)        
-      : (table & 0x01); 
+        case Cartridge::MIRROR::HORIZONTAL:
+            page = table >> 1;
+            break;
 
+        case Cartridge::MIRROR::ONE_SCREEN_LO:
+            page = 0;
+            break;
+
+        case Cartridge::MIRROR::ONE_SCREEN_HI:
+            page = 1;
+            break;
+
+        case Cartridge::MIRROR::FOUR_SCREEN:
+            return nt; 
+    }
     return (page * 0x400) + offset; 
 }
