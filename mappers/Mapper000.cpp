@@ -1,4 +1,4 @@
-#include "mappers/Mapper000.h"
+#include "Mapper000.h"
 
 Mapper000::Mapper000(uint8_t prgBanks, uint8_t chrBanks)
     : Mapper(prgBanks, chrBanks) {}

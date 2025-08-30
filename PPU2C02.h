@@ -4,10 +4,14 @@
 #include <vector>
 #include <memory>
 
+class Bus;
+
 class Cartridge;
 
 class PPU2C02 {
 public:
+    Bus* bus = nullptr;
+    void connectBus(Bus* bus);
     void connectCartridge(const std::shared_ptr<Cartridge>& c) { cart = c; }
     void    CPUwrite(uint16_t addr, uint8_t data);
     uint8_t CPUread(uint16_t addr);
@@ -39,20 +43,125 @@ public:
     Color{0xF8, 0xD8, 0x78}, Color{0xD8, 0xF8, 0x78}, Color{0xB8, 0xF8, 0xB8}, Color{0xB8, 0xF8, 0xD8},
     Color{0x00, 0xFC, 0xFC}, Color{0xF8, 0xD8, 0xF8}, Color{0x00, 0x00, 0x00}, Color{0x00, 0x00, 0x00}
     }; //Initialise NES system palette
-    
     int16_t scanline = 0; // -1 pre-render, 0-239 visible, 240 post, 241-260 vblank
     int16_t cycle    = 0; // 0-340
     bool    frame_complete = false; //Measure frame completion
-    uint8_t  ppuctrl{};   
-    uint8_t  ppumask{};   
-    uint8_t  ppustatus{}; 
+
+    struct PPUCTRL {
+        uint8_t value;
+        uint8_t nametableX   : 1; 
+        uint8_t nametableY   : 1; 
+        uint8_t increment    : 1; 
+        uint8_t spriteTbl    : 1; 
+        uint8_t bgTbl        : 1; 
+        uint8_t spriteSize   : 1; 
+        uint8_t masterSlave  : 1; 
+        uint8_t nmiEnable    : 1;
+
+        PPUCTRL(uint8_t val = 0) { from_byte(val); }
+
+        void from_byte(uint8_t val) {
+            value       = val;
+            nametableX  = val & 0x01;
+            nametableY  = (val >> 1) & 0x01;
+            increment   = (val >> 2) & 0x01;
+            spriteTbl   = (val >> 3) & 0x01;
+            bgTbl       = (val >> 4) & 0x01;
+            spriteSize  = (val >> 5) & 0x01;
+            masterSlave = (val >> 6) & 0x01;
+            nmiEnable   = (val >> 7) & 0x01;
+        }
+
+        uint8_t to_byte() {
+            value = (nametableX) |
+                    (nametableY << 1) |
+                    (increment  << 2) |
+                    (spriteTbl  << 3) |
+                    (bgTbl      << 4) |
+                    (spriteSize << 5) |
+                    (masterSlave<< 6) |
+                    (nmiEnable  << 7);
+            return value;
+        }
+    };
+    PPUCTRL ppuctrl{0x00};
+
+    struct PPUMASK {
+        uint8_t value;
+        uint8_t greyscale       : 1;
+        uint8_t showLeftBG      : 1;
+        uint8_t showLeftSprites : 1;
+        uint8_t showBG          : 1;
+        uint8_t showSprites     : 1;
+        uint8_t emphasizeRed    : 1;
+        uint8_t emphasizeGreen  : 1;
+        uint8_t emphasizeBlue   : 1;
+
+        PPUMASK(uint8_t val = 0) { from_byte(val); }
+
+        void from_byte(uint8_t val) {
+            value          = val;
+            greyscale      = val & 0x01;
+            showLeftBG     = (val >> 1) & 0x01;
+            showLeftSprites= (val >> 2) & 0x01;
+            showBG         = (val >> 3) & 0x01;
+            showSprites    = (val >> 4) & 0x01;
+            emphasizeRed   = (val >> 5) & 0x01;
+            emphasizeGreen = (val >> 6) & 0x01;
+            emphasizeBlue  = (val >> 7) & 0x01;
+        }
+
+        uint8_t to_byte() {
+            value = (greyscale) |
+                    (showLeftBG << 1) |
+                    (showLeftSprites << 2) |
+                    (showBG << 3) |
+                    (showSprites << 4) |
+                    (emphasizeRed << 5) |
+                    (emphasizeGreen << 6) |
+                    (emphasizeBlue << 7);
+            return value;
+        }
+    };
+    PPUMASK ppumask{0x00};
+
+
+    struct PPUSTATUS {
+        uint8_t value;
+        uint8_t unused    : 5; // usually 0
+        uint8_t spriteOverflow : 1;
+        uint8_t spriteZeroHit : 1;
+        uint8_t vblank        : 1;
+
+        PPUSTATUS(uint8_t val = 0) { from_byte(val); }
+
+        void from_byte(uint8_t val) {
+            value          = val;
+            unused         = val & 0x1F;
+            spriteOverflow = (val >> 5) & 0x01;
+            spriteZeroHit  = (val >> 6) & 0x01;
+            vblank         = (val >> 7) & 0x01;
+        }
+
+        uint8_t to_byte() {
+            value = (unused) |
+                    (spriteOverflow << 5) |
+                    (spriteZeroHit  << 6) |
+                    (vblank         << 7);
+            return value;
+        }
+    };
+    PPUSTATUS ppustatus{0x00};
+
     uint8_t  oamaddr{};   
     uint8_t  readBuffer{};
-    uint16_t v{};   
-    uint16_t t{};   
-    uint8_t  x{};   
-    bool     w{};  
+    uint16_t v{}; //During rendering, used for the scroll position. Outside of rendering, used as the current VRAM address. 
+    uint16_t t{}; //During rendering, specifies the starting coarse-x scroll for the next scanline and the starting y scroll for the screen. Outside of rendering, holds the scroll or VRAM address before transferring it to v.  
+    uint8_t  x{}; //The fine-x position of the current scroll, used during rendering alongside v  
+    bool     w{}; //Toggles on each write to either PPUSCROLL or PPUADDR, indicating whether this is the first or second write. Clears on reads of PPUSTATUS. Sometimes called the 'write latch' or 'write toggle'.
     std::shared_ptr<Cartridge> cart;
     uint16_t mapNametableAddr(uint16_t addr) const; // apply mirroring
-    uint16_t incAmount() const { return (ppuctrl & 0x04) ? 32 : 1; }
+    uint16_t incAmount();
+    void tick();
+    void render_scanline();
 };

@@ -319,6 +319,10 @@ uint16_t CPU6502::pop16()
 
 void CPU6502::clock()
 {
+    if (nmiRequested) {
+        nmi();
+        nmiRequested = false;
+    }
     if (cycles == 0)
     {
         execute();
@@ -341,7 +345,7 @@ void CPU6502::reset()
 void CPU6502::nmi()
 {
     push16(PC);
-    push(status.value);
+    push((status.value & ~0x30) | 0x20);
     status.i = 1;
     PC = read16(0xFFFA);
     cycles = 8;
@@ -352,12 +356,13 @@ void CPU6502::irq()
     if (status.i == 0)
     {
         push16(PC);
-        push(status.value);
+        push((status.value & ~0x30) | 0x20);
         status.i = 1;
         PC = read16(0xFFFE);
         cycles = 7;
     }
 }
+
 
 void CPU6502::serialize(std::ostream &os) const
 {

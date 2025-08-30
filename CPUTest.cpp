@@ -43,6 +43,7 @@ std::cout << "Reset vector points to: $" << std::hex << resetVector << "\n";
 
     std::cout << "ROM loaded via cartridge. Starting execution at \n" << std::hex << std::uppercase << std::setw(4) << std::setfill('0') 
           << cpu.PC << std::endl;
+    cpu.PC = 0xC000;
     std::cout << "PC    OP CODE      A  X  Y  P  SP  CYC" << std::endl;
     std::cout << "-----------------------------------------" << std::endl;
     std::string debug = cpu.debugStr();
@@ -54,7 +55,7 @@ std::cout << "Reset vector points to: $" << std::hex << resetVector << "\n";
         cpu.clock();
         std::string debug = cpu.debugStr();
         std::cout << debug;
-        if (cpu.totalcycles > 100) {
+        if (cpu.totalcycles > 30000) {
             break;
         }
     }

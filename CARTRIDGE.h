@@ -2,7 +2,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include "Mapper.h"
+#include "mappers/Mapper.h"
 
 class Cartridge
 {

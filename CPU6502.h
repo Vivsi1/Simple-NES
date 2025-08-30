@@ -4,6 +4,7 @@
 #include <cstdint>
 using namespace std;
 
+class Bus;
 
 class CPU6502
 {
@@ -45,6 +46,7 @@ public:
             : opcodename(name), operate(op), addressing(addr), cycle(cyc) {}
     };
 
+    bool nmiRequested = false;
     uint8_t read(uint16_t addr);
     uint16_t read16(uint16_t addr);
     void write(uint16_t addr, uint8_t data);
@@ -77,6 +79,8 @@ public:
         uint8_t u : 1; // Unused (usually 1)
         uint8_t v : 1; // Overflow
         uint8_t n : 1; // Negative
+
+        Status(uint8_t val = 0) { from_byte(val); } 
 
         void from_byte(uint8_t val)
         {
@@ -184,7 +188,7 @@ public:
     void ISC(uint16_t address);
 
     Bus* bus = nullptr;
-    Status status{status.value = 0x24};
+    Status status{0x24};
     uint8_t cycles = 8;
     int totalcycles = 8;
 };
