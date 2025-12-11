@@ -72,6 +72,10 @@ Cartridge::MIRROR Cartridge::getMirror(){
 
 bool Cartridge::CPUread(uint16_t addr, uint8_t &data)
 {
+    if (!mapper) {
+        std::cerr << "ERROR: mapper is null in Cartridge::CPUread\n";
+        return false;
+    }
     uint32_t mapped_addr;
     if (mapper->cpuMapRead(addr, mapped_addr) && mapped_addr < vPRGMemory.size())
     {

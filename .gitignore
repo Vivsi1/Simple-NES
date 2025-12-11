@@ -1,0 +1,31 @@
+# --- SDL2 ---
+SDL2/
+sdl2/
+SDL2/*/
+sdl2/*/
+SDL2.dll
+
+# --- NES ROM files ---
+*.nes
+
+# --- Build + CMake generated files (but keep CMakeLists.txt) ---
+# Build directories
+/build/
+/cmake-build*/
+/out/
+/bin/
+/lib/
+/CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+
+# Ignore all CMake-generated scripts except CMakeLists.txt
+*.cmake
+!CMakeLists.txt
+
+# IDE specific
+*.code-workspace
+.vscode/
+.idea/

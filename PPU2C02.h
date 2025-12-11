@@ -13,13 +13,16 @@ public:
     Bus* bus = nullptr;
     void connectBus(Bus* bus);
     void connectCartridge(const std::shared_ptr<Cartridge>& c) { cart = c; }
+
     void    CPUwrite(uint16_t addr, uint8_t data);
     uint8_t CPUread(uint16_t addr);
+
     uint8_t PPUread(uint16_t addr);
     void    PPUwrite(uint16_t addr, uint8_t data);
-    mutable std::vector<uint8_t> vram = std::vector<uint8_t>(2048); //Nametable + Attribute Table     
-    std::array<uint8_t, 0x20>  palette{}; //Frame Palette
-    std::array<uint8_t, 256> oam{};  //just add it for now, its somehow related to foreground rendering
+
+    mutable std::vector<uint8_t> vram = std::vector<uint8_t>(2048); //2 x (Nametable(32*30 = 960 bytes) + Attribute Table(64 bytes)) = 2048. Info read from pattern table in cartridge   
+    std::array<uint8_t, 0x20>  palette{}; //Frame Palette is eight groups of colors of four colors each.
+    std::array<uint8_t, 256> oam{};  //just add it for now, its somehow related to foreground/sprite rendering
     
     struct Color {
     uint8_t r, g, b;
@@ -43,10 +46,14 @@ public:
     Color{0xF8, 0xD8, 0x78}, Color{0xD8, 0xF8, 0x78}, Color{0xB8, 0xF8, 0xB8}, Color{0xB8, 0xF8, 0xD8},
     Color{0x00, 0xFC, 0xFC}, Color{0xF8, 0xD8, 0xF8}, Color{0x00, 0x00, 0x00}, Color{0x00, 0x00, 0x00}
     }; //Initialise NES system palette
-    int16_t scanline = 0; // -1 pre-render, 0-239 visible, 240 post, 241-260 vblank
-    int16_t cycle    = 0; // 0-340
-    bool    frame_complete = false; //Measure frame completion
+    std::array<std::array<Color, 256>, 240> framebuffer; //Store frame as array of pixels
+   
+    int16_t scanline_cycle = 0; // -1 pre-render, 0-239 visible, 240 post, 241-260 vblank
+    int16_t dot = 0; // 0-340
+    bool frame_complete = false; //Measure frame completion
+    bool oddFrame = false;
 
+    //PPU Registers
     struct PPUCTRL {
         uint8_t value;
         uint8_t nametableX   : 1; 
@@ -152,16 +159,49 @@ public:
         }
     };
     PPUSTATUS ppustatus{0x00};
-
     uint8_t  oamaddr{};   
     uint8_t  readBuffer{};
+
+    // Internal registers
     uint16_t v{}; //During rendering, used for the scroll position. Outside of rendering, used as the current VRAM address. 
     uint16_t t{}; //During rendering, specifies the starting coarse-x scroll for the next scanline and the starting y scroll for the screen. Outside of rendering, holds the scroll or VRAM address before transferring it to v.  
     uint8_t  x{}; //The fine-x position of the current scroll, used during rendering alongside v  
     bool     w{}; //Toggles on each write to either PPUSCROLL or PPUADDR, indicating whether this is the first or second write. Clears on reads of PPUSTATUS. Sometimes called the 'write latch' or 'write toggle'.
+
+     struct TileFetch {
+        uint8_t nt = 0;   // nametable byte
+        uint8_t at = 0;   // attribute byte (0–3)
+        uint8_t lo = 0;   // pattern low
+        uint8_t hi = 0;   // pattern high
+    };
+    TileFetch bg_latch; // used by dots 1-256 and 321-336 to place fetched data to
+
+    struct BGShifters {
+        uint16_t pattern_lo = 0;
+        uint16_t pattern_hi = 0;
+        uint16_t attrib_lo  = 0;
+        uint16_t attrib_hi  = 0;
+    };
+    BGShifters bg_shift; // Shifted by 1 every dot. Top half reloaded every dot % 8 + 1 time
+
+    struct SpriteTile {
+        uint8_t x = 0;       // horizontal offset counter
+        uint8_t attr = 0;    // sprite attribute (priority, palette, flip)
+        uint8_t lo = 0;      // pattern low shifter
+        uint8_t hi = 0;      // pattern high shifter
+    };
+    SpriteTile sprites[8];
+    uint8_t spriteCount = 0;
+    bool spriteZeroInLine = false;
+
     std::shared_ptr<Cartridge> cart;
     uint16_t mapNametableAddr(uint16_t addr) const; // apply mirroring
     uint16_t incAmount();
     void tick();
     void render_scanline();
+    void drawPixel(int x, int y, uint8_t palette, uint8_t pixel);
+    void shiftBGShifters();
+    void loadBGShifters();
+    void incrementScrollX();
+    void incrementScrollY();
 };

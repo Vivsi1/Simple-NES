@@ -50,10 +50,11 @@ std::cout << "Reset vector points to: $" << std::hex << resetVector << "\n";
     if (!debug.empty()) {
         std::cout << debug;
     }
-
+    ofstream fout("nestest_log.txt");
     while (true) {
         cpu.clock();
         std::string debug = cpu.debugStr();
+        fout << debug;
         std::cout << debug;
         if (cpu.totalcycles > 30000) {
             break;

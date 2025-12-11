@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <unordered_set>
 using namespace std;
 
 class Bus;
@@ -84,6 +85,7 @@ public:
 
         void from_byte(uint8_t val)
         {
+            value = val;
             c = val & 0x01;
             z = (val >> 1) & 0x01;
             i = (val >> 2) & 0x01;
@@ -109,6 +111,7 @@ public:
     };
 
     vector<instruction> lookup;
+    unordered_set<uint8_t> checkpagecross;
     CPU6502();
 
     void ADC(uint16_t address);
