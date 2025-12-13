@@ -11,6 +11,7 @@ class Cartridge;
 class PPU2C02 {
 public:
     Bus* bus = nullptr;
+    PPU2C02(); 
     void connectBus(Bus* bus);
     void connectCartridge(const std::shared_ptr<Cartridge>& c) { cart = c; }
 
@@ -22,8 +23,15 @@ public:
 
     mutable std::vector<uint8_t> vram = std::vector<uint8_t>(2048); //2 x (Nametable(32*30 = 960 bytes) + Attribute Table(64 bytes)) = 2048. Info read from pattern table in cartridge   
     std::array<uint8_t, 0x20>  palette{}; //Frame Palette is eight groups of colors of four colors each.
-    std::array<uint8_t, 256> oam{};  //just add it for now, its somehow related to foreground/sprite rendering
-    
+    std::array<uint8_t, 256> primaryoam{};  //We have to work on this now. Seems like refreshed every frame and contains 64 sprites. Contans 4 things for a sprite(Byte 0: Y position (minus 1), Byte 1: Tile index, Byte 2: Attributes (palette, flipping, priority) ,Byte 3: X position)
+    //Apart from that I believe only 8 sprites per frame loaded/evaluated from the SMB3 video by Bismuth. There are two oams in the system. The primary one listed above and the secondary one
+    struct SecondaryOAM {
+        std::array<uint8_t, 32> data {};   // 8 sprites × 4 bytes
+        void clear() { data.fill(0xFF); }
+    } secondary_oam;
+    std::array<uint8_t, 8> secondary_oam_index{}; // track original OAM index for each secondaryOAM slot (0..7), 0xFF = empty
+
+
     struct Color {
     uint8_t r, g, b;
     };
@@ -52,6 +60,7 @@ public:
     int16_t dot = 0; // 0-340
     bool frame_complete = false; //Measure frame completion
     bool oddFrame = false;
+    bool nmiOccurred = false;
 
     //PPU Registers
     struct PPUCTRL {
@@ -159,7 +168,7 @@ public:
         }
     };
     PPUSTATUS ppustatus{0x00};
-    uint8_t  oamaddr{};   
+    uint8_t  oamaddr{0};   
     uint8_t  readBuffer{};
 
     // Internal registers
@@ -168,7 +177,7 @@ public:
     uint8_t  x{}; //The fine-x position of the current scroll, used during rendering alongside v  
     bool     w{}; //Toggles on each write to either PPUSCROLL or PPUADDR, indicating whether this is the first or second write. Clears on reads of PPUSTATUS. Sometimes called the 'write latch' or 'write toggle'.
 
-     struct TileFetch {
+    struct TileFetch {
         uint8_t nt = 0;   // nametable byte
         uint8_t at = 0;   // attribute byte (0–3)
         uint8_t lo = 0;   // pattern low
@@ -184,24 +193,53 @@ public:
     };
     BGShifters bg_shift; // Shifted by 1 every dot. Top half reloaded every dot % 8 + 1 time
 
-    struct SpriteTile {
-        uint8_t x = 0;       // horizontal offset counter
-        uint8_t attr = 0;    // sprite attribute (priority, palette, flip)
-        uint8_t lo = 0;      // pattern low shifter
-        uint8_t hi = 0;      // pattern high shifter
-    };
-    SpriteTile sprites[8];
-    uint8_t spriteCount = 0;
-    bool spriteZeroInLine = false;
+    struct SpriteEval {
+        int n = 0;          // sprite index (0..63)
+        int m = 0;          // byte index within sprite (0..3)
+        uint8_t latch = 0;  // odd-cycle latch
+        int found = 0;      // number of sprites copied
+        bool writesDisabled = false;
+        int copy = 0;
+        int cycleGuard = 0; // safety
+    } sprite_eval;
 
+    struct SpriteFetchEntry {
+        uint8_t y = 0xFF;
+        uint8_t tile = 0xFF;
+        uint8_t attr = 0xFF;
+        uint8_t x = 0xFF;
+        bool valid = false;
+        bool isSpriteZero = false;
+    };
+    std::array<SpriteFetchEntry, 8> sprite_fetch;
+
+    struct SpriteShifter {
+        uint16_t lo = 0;
+        uint16_t hi = 0;
+        int x_counter = 0;
+        uint8_t palette = 0;
+        uint8_t priority = 0;
+        bool valid = false;
+        bool isSpriteZero = false;
+    };
+    std::array<SpriteShifter, 8> sprite_shifters;
+
+    bool spriteZeroInLine = false;
+    uint8_t openBus = 0;
     std::shared_ptr<Cartridge> cart;
     uint16_t mapNametableAddr(uint16_t addr) const; // apply mirroring
     uint16_t incAmount();
     void tick();
+    void debugOAMToTexture(uint32_t* out, int texW, int texH);
+    void decodeTileToBuffer(uint8_t tile, uint8_t paletteIndex, uint32_t* outPixels);
     void render_scanline();
     void drawPixel(int x, int y, uint8_t palette, uint8_t pixel);
     void shiftBGShifters();
     void loadBGShifters();
     void incrementScrollX();
     void incrementScrollY();
+    void spriteEvaluation(int dot);
+    void fetchSpriteTile(int dot);
+    void shiftSpriteShifters();
+    void getSpritePixel(uint8_t x, uint8_t &pixel, uint8_t &palette, bool &priority, bool &isSpriteZero);
 };

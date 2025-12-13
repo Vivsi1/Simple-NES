@@ -51,7 +51,7 @@ Renderer::~Renderer() {
     SDL_Quit();
 }
 
-void Renderer::drawFrame(const PPU2C02& ppu) {
+void Renderer::drawFrame(PPU2C02& ppu) {
 
     void* pixels = nullptr;
     int pitch = 0;
@@ -60,13 +60,11 @@ void Renderer::drawFrame(const PPU2C02& ppu) {
         std::cerr << "LockTexture failed: " << SDL_GetError() << "\n";
         return;
     }
-    
+
     uint32_t* dst = reinterpret_cast<uint32_t*>(pixels);
 
     for (int y = 0; y < HEIGHT; y++) {
-        uint32_t* row = reinterpret_cast<uint32_t*>(
-            reinterpret_cast<uint8_t*>(dst) + y * pitch
-        );
+        uint32_t* row = (uint32_t*)((uint8_t*)dst + y * pitch);
 
         for (int x = 0; x < WIDTH; x++) {
             auto c = ppu.framebuffer[y][x];
@@ -75,8 +73,28 @@ void Renderer::drawFrame(const PPU2C02& ppu) {
     }
 
     SDL_UnlockTexture(texture);
-    
+    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+
+}
+
+// void Renderer::drawOAMDebug(uint32_t* pixels, int w, int h)
+// {
+//     if (!oamTexture)
+//         oamTexture = SDL_CreateTexture(
+//             renderer, SDL_PIXELFORMAT_ARGB8888,
+//             SDL_TEXTUREACCESS_STREAMING, w, h);
+
+//     SDL_UpdateTexture(oamTexture, nullptr, pixels, w * sizeof(uint32_t));
+
+//     SDL_Rect dest = { 0, 0, w * 2, h * 2 }; // scale ×2
+//     SDL_RenderCopy(renderer, oamTexture, nullptr, &dest);
+// }
+
+void Renderer::beginFrame() {
+    SDL_SetRenderDrawColor(renderer, 0,0,0,255);
     SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, texture, nullptr, nullptr);  // SDL2 correct call
+}
+
+void Renderer::presentFrame() {
     SDL_RenderPresent(renderer);
 }

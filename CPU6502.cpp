@@ -13,11 +13,11 @@ using namespace std;
 CPU6502::CPU6502()
 {
     using A = CPU6502;
-    
-    checkpagecross =    {0x10, 0x11, 0x19, 0x1C, 0x1D, 0x30, 0x31, 0x39, 0x3C, 0x3D,
-                        0x50, 0x51, 0x59, 0x5C, 0x5D, 0x70, 0x71, 0x79, 0x7C, 0x7D,
-                        0x90, 0xB0, 0xB1, 0xB3, 0xB9, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF,
-                        0xD0, 0xD1, 0xD9, 0xDC, 0xDD, 0xF0, 0xF1, 0xF9, 0xFC, 0xFD};
+
+    checkpagecross = {0x10, 0x11, 0x19, 0x1C, 0x1D, 0x30, 0x31, 0x39, 0x3C, 0x3D,
+                      0x50, 0x51, 0x59, 0x5C, 0x5D, 0x70, 0x71, 0x79, 0x7C, 0x7D,
+                      0x90, 0xB0, 0xB1, 0xB3, 0xB9, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF,
+                      0xD0, 0xD1, 0xD9, 0xDC, 0xDD, 0xF0, 0xF1, 0xF9, 0xFC, 0xFD};
     lookup = {
         {"BRK", &A::BRK, Addressing::IMP, 7},
         {"ORA", &A::ORA, Addressing::IZX, 6},
@@ -322,12 +322,63 @@ uint16_t CPU6502::pop16()
     return (h << 8) | l;
 }
 
+void CPU6502::performDMA()
+{
+
+    // PHASE 1: dummy alignment cycle
+    if (bus->dma.dummy)
+    {
+        // Wait until we reach an even CPU cycle
+        if (totalcycles % 2 == 1)
+        {
+            // consume this odd dummy cycle
+            bus->dma.dummy = false;
+        }
+        return;
+    }
+
+    // PHASE 2: real DMA transfer cycles
+    if (totalcycles % 2 == 0)
+    {
+        // Even cycle → read from CPU memory
+        bus->dma.data = bus->CPUread((bus->dma.page << 8) | bus->dma.addr);
+    }
+    else
+    {
+        // Odd cycle → write to OAMDATA ($2004)
+        bus->ppu.CPUwrite(0x2004, bus->dma.data);
+        bus->dma.addr++;
+
+        // End when addr wraps back to 0
+        if (bus->dma.addr == 0x00)
+        {
+            bus->dma.transfer = false;
+            bus->dma.dummy = true;
+        }
+    }
+}
+
+void CPU6502::AcknowledgeNMI()
+{
+    bus->ppu.nmiOccurred = false;
+}
+
 void CPU6502::clock()
 {
-    if (nmiRequested) {
-        nmi();
-        nmiRequested = false;
+    // DMA always stops CPU entirely
+    if (bus->dma.transfer)
+    {
+        performDMA();
+        totalcycles++;
+        return;
     }
+
+    // Only run CPU when no DMA
+    if (bus->ppu.nmiOccurred) 
+    {
+        nmi();
+    }
+
     if (cycles == 0)
     {
         execute();
@@ -345,11 +396,11 @@ void CPU6502::reset()
     SP = 0xFD;
     status.value = 0x24;
     cycles = 7;
-
 }
 
 void CPU6502::nmi()
 {
+    AcknowledgeNMI();
     push16(PC);
     push((status.value & ~0x30) | 0x20);
     status.i = 1;
@@ -368,7 +419,6 @@ void CPU6502::irq()
         cycles = 7;
     }
 }
-
 
 void CPU6502::serialize(std::ostream &os) const
 {
@@ -524,12 +574,13 @@ void CPU6502::execute()
         status.z = (A == 0 ? 1 : 0);
         status.n = (((A >> 7) & 1) == 1 ? 1 : 0);
     }
-    else if(opcode == 0x0B || opcode == 0x2B){
-        uint8_t m = read(address);   
-        A = A & m;                   
+    else if (opcode == 0x0B || opcode == 0x2B)
+    {
+        uint8_t m = read(address);
+        A = A & m;
         status.z = (A == 0 ? 1 : 0);
         status.n = ((A & 0x80) != 0 ? 1 : 0);
-        status.c = status.n; 
+        status.c = status.n;
     }
     else
     {
@@ -577,7 +628,6 @@ void CPU6502::ADC(uint16_t address)
     status.z = (A == 0 ? 1 : 0);
     status.n = (A & 0x80 ? 1 : 0);
 }
-
 
 void CPU6502::AND(uint16_t address)
 {
@@ -1033,44 +1083,51 @@ void CPU6502::XXX(uint16_t)
 {
 }
 
-//Undocumented Opcodes
+// Undocumented Opcodes
 
-void CPU6502::AHX(uint16_t address) {
-    
+void CPU6502::AHX(uint16_t address)
+{
+
     uint8_t value = A & X & ((address >> 8) + 1);
     write(address, value);
 }
 
-void CPU6502::SHX(uint16_t address) {
+void CPU6502::SHX(uint16_t address)
+{
     uint8_t value = X & ((address >> 8) + 1);
     write(address, value);
 }
 
-void CPU6502::SAX(uint16_t address) {
+void CPU6502::SAX(uint16_t address)
+{
     uint8_t value = A & X;
     bus->CPUwrite(address, value);
 }
 
-void CPU6502::KIL(uint16_t /*address*/) {
-   //Unimplemented
+void CPU6502::KIL(uint16_t /*address*/)
+{
+    // Unimplemented
 }
 
-void CPU6502::TAS(uint16_t address) {
+void CPU6502::TAS(uint16_t address)
+{
     SP = A & X;
     uint8_t value = A & X & ((address >> 8) + 1);
     write(address, value);
 }
 
-void CPU6502::LAS(uint16_t address) {
+void CPU6502::LAS(uint16_t address)
+{
     uint8_t value = read(address) & SP;
     A = X = SP = value;
     status.z = (value == 0 ? 1 : 0);
     status.n = ((value & 0x80) != 0 ? 1 : 0);
 }
 
-void CPU6502::AXS(uint16_t address) {
+void CPU6502::AXS(uint16_t address)
+{
     uint8_t m = read(address);
-    uint8_t temp = (A & X) - m;   
+    uint8_t temp = (A & X) - m;
     status.c = ((A & X) >= m) ? 1 : 0;
     X = temp;
     status.z = (X == 0 ? 1 : 0);
@@ -1141,8 +1198,8 @@ void CPU6502::ARR(uint16_t address)
     A &= m;
     uint8_t oldA = A;
     A = (A >> 1) | (status.c << 7);
-    status.c = (A & 0x40) >> 6;               
-    status.v = ((A >> 5) ^ (A >> 6)) & 1;     
+    status.c = (A & 0x40) >> 6;
+    status.v = ((A >> 5) ^ (A >> 6)) & 1;
     status.z = (A == 0);
     status.n = (A & 0x80) != 0;
 }
@@ -1152,15 +1209,13 @@ void CPU6502::XAA(uint16_t address)
     uint8_t m = read(address);
     uint8_t temp = X & m;
     if (temp < m)
-        temp &= 0xEF;  
+        temp &= 0xEF;
     if (temp & 0x01 == 0)
-        temp &= 0xFE;  
+        temp &= 0xFE;
     A = temp;
     status.z = (A == 0);
     status.n = (A & 0x80) != 0;
 }
-
-
 
 void CPU6502::LAX(uint16_t address)
 {
@@ -1195,6 +1250,7 @@ void CPU6502::ISC(uint16_t address)
     status.n = (A & 0x80) != 0;
 }
 
-void CPU6502::ANC(uint16_t address){
-    // Already Implemented        
+void CPU6502::ANC(uint16_t address)
+{
+    // Already Implemented
 }

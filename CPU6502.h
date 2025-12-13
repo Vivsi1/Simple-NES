@@ -46,8 +46,6 @@ public:
         instruction(string name, InstrFn op, Addressing addr, int cyc)
             : opcodename(name), operate(op), addressing(addr), cycle(cyc) {}
     };
-
-    bool nmiRequested = false;
     uint8_t read(uint16_t addr);
     uint16_t read16(uint16_t addr);
     void write(uint16_t addr, uint8_t data);
@@ -113,7 +111,8 @@ public:
     vector<instruction> lookup;
     unordered_set<uint8_t> checkpagecross;
     CPU6502();
-
+    void performDMA();
+    void AcknowledgeNMI();
     void ADC(uint16_t address);
     void AND(uint16_t address);
     void ASL(uint16_t address);

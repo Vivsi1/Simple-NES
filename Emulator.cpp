@@ -64,30 +64,28 @@ void Emulator::run()
 
     auto lastTime = std::chrono::high_resolution_clock::now();
     int frames = 0;
-    
+
     while (running)
     {
         // Run cycles until a frame is produced
-        do {
+        handleEvents();
+        do
+        {
             bus.cpu.clock();
             bus.ppu.tick();
             bus.ppu.tick();
             bus.ppu.tick();
-        }
-        while (!bus.ppu.frame_complete);
-
+        } while (!bus.ppu.frame_complete);
         // Present frame
         presentFrame();
         bus.ppu.frame_complete = false;
 
         // Now handle SDL input (once per frame)
-        handleEvents();
 
         // FPS counter
         auto now = std::chrono::high_resolution_clock::now();
         if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTime).count() >= 1000)
         {
-            std::cout << "FPS: " << frames << "\n";
             frames = 0;
             lastTime = now;
         }
@@ -100,7 +98,6 @@ void Emulator::run()
         }
     }
 }
-
 
 void Emulator::stop()
 {
@@ -129,21 +126,35 @@ void Emulator::handleEvents()
     while (SDL_PollEvent(&event))
     {
         if (event.type == SDL_QUIT)
-        {
             stop();
-        }
-
-        // Add controller / keyboard handling here:
-        // e.g. when key pressed -> write to controller register on bus
-        //
-        // Example (pseudo):
-        // if (event.type == SDL_EVENT_KEY_DOWN) { if (event.key.keysym.sym == SDLK_ESCAPE) stop(); }
     }
+
+    // ---- CONTROLLER STATE POLLING ----
+    const Uint8* keys = SDL_GetKeyboardState(nullptr);
+
+    bus.setButton(0, Bus::NES_A,      keys[SDL_SCANCODE_Z]);
+    bus.setButton(0, Bus::NES_B,      keys[SDL_SCANCODE_X]);
+    bus.setButton(0, Bus::NES_SELECT, keys[SDL_SCANCODE_RSHIFT]);
+    bus.setButton(0, Bus::NES_START,  keys[SDL_SCANCODE_RETURN]);
+    bus.setButton(0, Bus::NES_UP,     keys[SDL_SCANCODE_UP]);
+    bus.setButton(0, Bus::NES_DOWN,   keys[SDL_SCANCODE_DOWN]);
+    bus.setButton(0, Bus::NES_LEFT,   keys[SDL_SCANCODE_LEFT]);
+    bus.setButton(0, Bus::NES_RIGHT,  keys[SDL_SCANCODE_RIGHT]);
 }
 
 void Emulator::presentFrame()
 {
-    // This assumes your PPU provides a framebuffer that renderer.drawFrame accepts.
-    // Earlier we used: ppu.framebuffer[y][x] returning Color { r,g,b }.
-    renderer.drawFrame(bus.ppu);
+    // 1. Clear and draw NES framebuffer
+    renderer.beginFrame();       // SDL_RenderClear
+    renderer.drawFrame(bus.ppu); // SDL_RenderCopy(texture)
+
+    // 2. Prepare OAM debug buffer
+    // static uint32_t oamDebugTex[64 * 64];
+    // bus.ppu.debugOAMToTexture(oamDebugTex, 64, 64);
+
+    // 3. Draw the OAM Debug overlay ON TOP
+    // renderer.drawOAMDebug(oamDebugTex, 64, 64);
+
+    // 4. PRESENT — MUST BE HERE
+    renderer.presentFrame(); // SDL_RenderPresent()
 }

@@ -10,10 +10,15 @@ public:
     Renderer();
     ~Renderer();
 
-    void drawFrame(const PPU2C02& ppu);
+    void drawFrame(PPU2C02& ppu);
+    void drawOAMDebug(uint32_t* pixels, int w, int h);
+    void beginFrame();
+    void presentFrame();
+
 
 private:
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
+    SDL_Texture* oamTexture = nullptr;
     SDL_Texture* texture = nullptr;
 };
