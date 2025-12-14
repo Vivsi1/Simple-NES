@@ -8,7 +8,7 @@ public:
     ~Mapper000() override;
 
     bool cpuMapRead(uint16_t addr, uint32_t &mapped_addr) override;
-    bool cpuMapWrite(uint16_t addr, uint32_t &mapped_addr) override;
+    bool cpuMapWrite(uint16_t addr,uint8_t data, uint32_t &mapped_addr) override;
     bool ppuMapRead(uint16_t addr, uint32_t &mapped_addr) override;
-    bool ppuMapWrite(uint16_t addr, uint32_t &mapped_addr) override;
+    bool ppuMapWrite(uint16_t addr,uint8_t data, uint32_t &mapped_addr) override;
 };

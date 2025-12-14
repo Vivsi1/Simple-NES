@@ -59,7 +59,7 @@ public:
     void reset();
     void nmi();
     void irq();
-
+    bool nmi_pending = false;
     void serialize(std::ostream &os) const;
     void deserialize(std::istream &is);
     bool isCrossed(uint16_t a, int16_t b);
@@ -112,7 +112,6 @@ public:
     unordered_set<uint8_t> checkpagecross;
     CPU6502();
     void performDMA();
-    void AcknowledgeNMI();
     void ADC(uint16_t address);
     void AND(uint16_t address);
     void ASL(uint16_t address);

@@ -28,6 +28,7 @@ public:
     uint8_t controller_strobe = 0;
     uint8_t prev_controller_strobe = 0;
     OAM_DMA dma;
+    bool nmi = false; 
     std::shared_ptr<Cartridge> cartridge;
     uint8_t CPUread(uint16_t addr);
     void CPUwrite(uint16_t addr, uint8_t data);

@@ -358,11 +358,6 @@ void CPU6502::performDMA()
     }
 }
 
-void CPU6502::AcknowledgeNMI()
-{
-    bus->ppu.nmiOccurred = false;
-}
-
 void CPU6502::clock()
 {
     // DMA always stops CPU entirely
@@ -374,13 +369,20 @@ void CPU6502::clock()
     }
 
     // Only run CPU when no DMA
-    if (bus->ppu.nmiOccurred) 
-    {
-        nmi();
-    }
 
     if (cycles == 0)
     {
+        if (nmi_pending) //Its delayed an instruction??? This is so messed up lmao
+        {
+            nmi_pending = false;
+            nmi();
+            return;
+        }
+        if (bus->nmi)
+        {
+            bus->nmi = false;
+            nmi_pending = true;   
+        }
         execute();
     }
 
@@ -400,7 +402,6 @@ void CPU6502::reset()
 
 void CPU6502::nmi()
 {
-    AcknowledgeNMI();
     push16(PC);
     push((status.value & ~0x30) | 0x20);
     status.i = 1;

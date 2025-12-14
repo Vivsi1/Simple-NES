@@ -1,6 +1,7 @@
 #include "PPU2C02.h"
 #include "Cartridge.h"
 #include "Bus.h"
+#include "Mirror.h"
 #include <iostream>
 
 PPU2C02::PPU2C02()
@@ -53,11 +54,24 @@ void PPU2C02::CPUwrite(uint16_t addr, uint8_t data)
 
     {
     case 0: // PPUCTRL
+    {
+        bool prevNMI = ppuctrl.nmiEnable;
         ppuctrl.value = data;
+
         ppuctrl.from_byte(ppuctrl.value);
         t = (t & 0xF3FF) | ((data & 0x03) << 10);
         w = false;
+        if (prevNMI && !ppuctrl.nmiEnable)
+        {
+            nmi_latched = false;
+        }
+        if (!prevNMI && ppuctrl.nmiEnable && ppustatus.vblank && !nmi_latched)
+        {
+            bus->nmi = true;
+            nmi_latched = true;
+        }
         break;
+    }
     case 1: // PPUMASK
         ppumask.value = data;
         ppumask.from_byte(ppumask.value);
@@ -115,8 +129,10 @@ uint8_t PPU2C02::CPUread(uint16_t addr)
     {
     case 2: // PPUSTATUS
         data = (ppustatus.value & 0xE0) | (readBuffer & 0x1F);
-        ppustatus.value &= ~0xC0;
+        ppustatus.value &= ~0x80;
         ppustatus.from_byte(ppustatus.value);
+        if (scanline_cycle == 241 && (dot == 1))
+            suppress = true;
         w = false;
         break;
     case 4: // OAMDATA
@@ -311,8 +327,8 @@ uint16_t PPU2C02::mapNametableAddr(uint16_t addr) const
     uint16_t nt = (addr - 0x2000) & 0x0FFF;
     uint16_t table = (nt / 0x0400) & 0x03;
     uint16_t offset = nt & 0x03FF;
-    auto mir = cart ? cart->getMirror() : Cartridge::MIRROR::VERTICAL;
-    if (mir == Cartridge::MIRROR::FOUR_SCREEN)
+    auto mir = cart ? cart->getMirror() : MIRROR::VERTICAL;
+    if (mir == MIRROR::FOUR_SCREEN)
 
     {
         vram.resize(4096);
@@ -321,23 +337,23 @@ uint16_t PPU2C02::mapNametableAddr(uint16_t addr) const
     switch (mir)
 
     {
-    case Cartridge::MIRROR::VERTICAL:
+    case MIRROR::VERTICAL:
         page = table & 0x01;
         break;
 
-    case Cartridge::MIRROR::HORIZONTAL:
+    case MIRROR::HORIZONTAL:
         page = table >> 1;
         break;
 
-    case Cartridge::MIRROR::ONE_SCREEN_LO:
+    case MIRROR::ONE_SCREEN_LO:
         page = 0;
         break;
 
-    case Cartridge::MIRROR::ONE_SCREEN_HI:
+    case MIRROR::ONE_SCREEN_HI:
         page = 1;
         break;
 
-    case Cartridge::MIRROR::FOUR_SCREEN:
+    case MIRROR::FOUR_SCREEN:
         return nt;
     }
     return (page * 0x400) + offset;
@@ -495,7 +511,7 @@ void PPU2C02::spriteEvaluation(int dot)
     }
     if (odd)
     {
-        int addr = (sprite_eval.n * 4 + sprite_eval.m) & 0xFF; 
+        int addr = (sprite_eval.n * 4 + sprite_eval.m) & 0xFF;
         sprite_eval.latch = primaryoam[addr]; // data is read from (primary) OAM
         return;
     }
@@ -508,6 +524,14 @@ void PPU2C02::spriteEvaluation(int dot)
             if (sprite_eval.m == 0)
             {
                 uint8_t spriteY = sprite_eval.latch;
+                if (spriteY >= 240)
+                {
+                    sprite_eval.n = (sprite_eval.n + 1) & 63;
+                    sprite_eval.m = 0;
+                    if (sprite_eval.n == 0)
+                        sprite_eval.writesDisabled = true;
+                    return;
+                }
                 int h = ppuctrl.spriteSize ? 16 : 8;
 
                 // Correct NES rule uses scanline + 1. Insanely bullshit. Dont ever change this or welcome back to off by one hell.
@@ -529,15 +553,15 @@ void PPU2C02::spriteEvaluation(int dot)
                     return;
                 }
             }
-            secondary_oam.data[sprite_eval.found * 4 + sprite_eval.m] = sprite_eval.latch; //data is written to secondary OAM 
+            secondary_oam.data[sprite_eval.found * 4 + sprite_eval.m] = sprite_eval.latch; // data is written to secondary OAM
 
             sprite_eval.m++; // If the value is in range, set the sprite overflow flag in $2002 and read the next 3 entries of OAM (incrementing 'm' after each byte and incrementing 'n' when 'm' overflows)
 
             if (sprite_eval.m == 4)
             {
-                secondary_oam_index[sprite_eval.found] = sprite_eval.n; 
+                secondary_oam_index[sprite_eval.found] = sprite_eval.n;
 
-                sprite_eval.m = 0; //overflow
+                sprite_eval.m = 0; // overflow
                 sprite_eval.found++;
                 sprite_eval.n++; //  if m = 3, increment n
 
@@ -550,41 +574,28 @@ void PPU2C02::spriteEvaluation(int dot)
             sprite_eval.writesDisabled = true;
         }
     }
-    else
+    // If already found 8 sprites, any additional in-range sprite sets overflow
+if (sprite_eval.found >= 8)
+{
+    uint8_t spriteY = sprite_eval.latch;
+    int h = ppuctrl.spriteSize ? 16 : 8;
+
+    int diff = (scanline_cycle + 1) - spriteY;
+    if (diff > 0 && diff <= h)
     {
-        uint8_t testY = primaryoam[(sprite_eval.n * 4) & 0xFF];
-        int h = ppuctrl.spriteSize ? 16 : 8;
-
-        int diff = (scanline_cycle + 1) - testY;
-        bool inRange = (diff >= 0 && diff < h);
-
-        if (inRange)
-        {
-            // Official overflow flag behavior
-            ppustatus.spriteOverflow = 1;
-
-            // Perform the 3 dummy increments
-            for (int i = 0; i < 3; i++)
-            {
-                sprite_eval.m++;
-                if (sprite_eval.m == 4)
-                {
-                    sprite_eval.m = 0;
-                    sprite_eval.n = (sprite_eval.n + 1) & 63;
-                }
-            }
-        }
-        else
-        {
-            // Normal overflow iteration
-            sprite_eval.m = (sprite_eval.m + 1) & 3;
-            sprite_eval.n = (sprite_eval.n + 1) & 63;
-        }
+        ppustatus.spriteOverflow = 1;
     }
+
+    // Hardware continues scanning but does not write
+    sprite_eval.n = (sprite_eval.n + 1) & 63;
+    sprite_eval.m = 0;
+    sprite_eval.writesDisabled = true;
+    return;
+}
 }
 
 void PPU2C02::fetchSpriteTile(int dot)
-{   //I wish I could find better references for this. Lots of guess work and reading.
+{ // I wish I could find better references for this. Lots of guess work and reading.
     int spriteIndex = (dot - 257) / 8;
     int cycle = (dot - 257) % 8;
     if (spriteIndex < 0 || spriteIndex >= 8)
@@ -612,7 +623,7 @@ void PPU2C02::fetchSpriteTile(int dot)
     if (cycle != 7)
         return;
 
-    if (entry.y == 0xFF)
+    if (entry.y >= 240)
     {
         sh.valid = false;
         return;
@@ -621,12 +632,6 @@ void PPU2C02::fetchSpriteTile(int dot)
 
     // IMPORTANT: fetch uses *current scanline*, NOT scanline+1. Insanely bullshit. Dont ever changes this or welcome back to off by one hell.
     int fineY = scanline_cycle - entry.y;
-
-    if (fineY < 0 || fineY >= height)
-    {
-        sh.valid = false;
-        return;
-    }
 
     int tileRow = 0;
 
@@ -682,6 +687,8 @@ void PPU2C02::fetchSpriteTile(int dot)
     sh.priority = (entry.attr & 0x20) ? 1 : 0;
     sh.isSpriteZero = entry.isSpriteZero;
     sh.valid = true;
+    if (entry.isSpriteZero)
+        sprite0_y = entry.y;
 }
 
 void PPU2C02::shiftSpriteShifters()
@@ -711,26 +718,7 @@ void PPU2C02::tick()
     // 241's 1st dot is used to set vblank and then request nmi.
     // 241-260 are clear after this. The PPU makes no memory accesses during these scanline_cycles, so PPU memory can be freely accessed by the program.
     // 261 Signifies frame completion. Additionally on 1st scanline_cycle clock tick, vblank is cleared and Sprite 0 hit and sprite overflow flags are cleared. Between 280-304 Vertical scroll bits are copied from t into v. This loads the starting scroll position for the upcoming frame.
-
-    if (scanline_cycle <= 239)
-
-    {
-        render_scanline();
-    }
-    else if (scanline_cycle == 241 && dot == 1)
-
-    {
-        ppustatus.vblank = 1;
-        ppustatus.to_byte();
-        if (ppuctrl.nmiEnable == 1 && !nmiOccurred)
-
-        {
-            // Pass to bus which passes to cpu to nmi?
-            nmiOccurred = true;
-        }
-    }
-    else if (scanline_cycle == 261)
-
+    if (scanline_cycle == 261)
     {
         if (dot == 1)
 
@@ -739,22 +727,43 @@ void PPU2C02::tick()
             ppustatus.spriteOverflow = 0;
             ppustatus.vblank = 0;
             ppustatus.to_byte();
-            nmiOccurred = false;
+            nmi_latched = false;
             frame_complete = true;
+            suppress = false;
         }
-        render_scanline();
         if (dot >= 280 && dot <= 304 && (ppumask.showBG || ppumask.showSprites))
 
         {
             v = (v & 0x041F) | (t & 0x7BE0);
         }
     }
+    if (scanline_cycle == 241 && dot == 1)
+
+    {
+        if (!suppress)
+        {
+            ppustatus.vblank = 1;
+            ppustatus.to_byte();
+            if (ppuctrl.nmiEnable == 1 && !nmi_latched)
+
+            {
+                // Pass to bus which passes to cpu to nmi?
+                bus->nmi = true;
+                nmi_latched = true;
+            }
+        }
+    }
+    if (scanline_cycle <= 239 || scanline_cycle == 261)
+    {
+        render_scanline();
+    }
     dot++;
     if (dot > 340)
     {
         dot = 0;
         scanline_cycle++;
-        if(scanline_cycle == 262){
+        if (scanline_cycle == 262)
+        {
             scanline_cycle = 0;
         }
     }
@@ -772,7 +781,7 @@ void PPU2C02::render_scanline()
 
     if (visibleScanline && visibleCycle)
     {
-        //Helps us choose what to present and when.
+        // Helps us choose what to present and when.
         uint16_t mask = 0x8000 >> this->x;
         uint8_t p0 = (bg_shift.pattern_lo & mask) ? 1 : 0;
         uint8_t p1 = (bg_shift.pattern_hi & mask) ? 1 : 0;
@@ -802,7 +811,7 @@ void PPU2C02::render_scanline()
         if (ppumask.showSprites)
 
         {
-            getSpritePixel(dot - 1, sprPixel, sprPalette, sprPriority, sprIsZero); //Logical enough
+            getSpritePixel(dot - 1, sprPixel, sprPalette, sprPriority, sprIsZero); // Logical enough
         }
 
         bool sprOpaque = (sprPixel != 0);
@@ -814,12 +823,19 @@ void PPU2C02::render_scanline()
         if (!ppumask.showLeftSprites && xcoord < 8)
             sprOpaque = false;
 
-        if (sprIsZero && sprOpaque && bgOpaque &&
-            xcoord < 255 &&
-            ppumask.showBG && ppumask.showSprites &&
-            ppustatus.spriteZeroHit == 0 &&
-            scanline_cycle >= 0 && scanline_cycle < 240)
+        int spriteHeight = ppuctrl.spriteSize ? 16 : 8;
+        int diff = scanline_cycle - sprite0_y;
 
+        if (sprIsZero &&
+            sprOpaque &&
+            bgOpaque &&
+            xcoord < 255 &&
+            ppumask.showBG &&
+            ppumask.showSprites &&
+            ppustatus.spriteZeroHit == 0 &&
+            diff > 0 &&
+            diff <= spriteHeight &&
+            scanline_cycle <= 239)
         {
             ppustatus.spriteZeroHit = 1;
             ppustatus.to_byte();
@@ -863,7 +879,6 @@ void PPU2C02::render_scanline()
 
         drawPixel(dot - 1, scanline_cycle, finalPalette, finalPixel);
     }
-
     if (scanline_cycle >= 0 && scanline_cycle < 240 and dot < 65)
     {
         if (dot == 1)
@@ -903,7 +918,7 @@ void PPU2C02::render_scanline()
     }
 
     if (visibleScanline && visibleCycle)
-        shiftSpriteShifters(); 
+        shiftSpriteShifters();
 
     if ((visibleScanline || preScanline) && (visibleCycle || fetchScanlineCycle))
 

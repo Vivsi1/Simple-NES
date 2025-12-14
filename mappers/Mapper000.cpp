@@ -15,7 +15,7 @@ bool Mapper000::cpuMapRead(uint16_t addr, uint32_t &mapped_addr)
     return false;
 }
 
-bool Mapper000::cpuMapWrite(uint16_t addr, uint32_t &mapped_addr)
+bool Mapper000::cpuMapWrite(uint16_t addr,uint8_t data, uint32_t &mapped_addr)
 {
     if (addr >= 0x8000 && addr <= 0xFFFF)
     {
@@ -35,7 +35,7 @@ bool Mapper000::ppuMapRead(uint16_t addr, uint32_t &mapped_addr)
     return false;
 }
 
-bool Mapper000::ppuMapWrite(uint16_t addr, uint32_t &mapped_addr)
+bool Mapper000::ppuMapWrite(uint16_t addr,uint8_t data, uint32_t &mapped_addr)
 {
     if (addr < 0x2000 && nCHRBanks == 0)
     {

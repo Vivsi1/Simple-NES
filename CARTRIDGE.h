@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include "mappers/Mapper.h"
+#include "Mirror.h"
 
 class Cartridge
 {
@@ -17,14 +18,7 @@ public:
     bool PPUread(uint16_t addr, uint8_t &data);
     bool PPUwrite(uint16_t addr, uint8_t data);
 
-    enum class MIRROR
-    {
-        HORIZONTAL,
-        VERTICAL,
-        ONE_SCREEN_LO,
-        ONE_SCREEN_HI,
-        FOUR_SCREEN
-    };
+
     MIRROR mirror = MIRROR::HORIZONTAL;
     MIRROR getMirror();
     bool imageValid = false;

@@ -37,7 +37,6 @@ void Bus::CPUwrite(uint16_t addr, uint8_t data)
     {
         dma.page = data;
         dma.addr = 0x00;
-        ppu.oamaddr = 0;
         dma.transfer = true;
         dma.dummy = true;
         return;

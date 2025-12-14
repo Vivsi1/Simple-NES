@@ -60,7 +60,9 @@ public:
     int16_t dot = 0; // 0-340
     bool frame_complete = false; //Measure frame completion
     bool oddFrame = false;
-    bool nmiOccurred = false;
+    bool nmi_latched = false;
+
+    bool suppress = false;
 
     //PPU Registers
     struct PPUCTRL {
@@ -215,7 +217,7 @@ public:
 
     struct SpriteShifter {
         uint16_t lo = 0;
-        uint16_t hi = 0;
+        uint16_t hi = 0;    
         int x_counter = 0;
         uint8_t palette = 0;
         uint8_t priority = 0;
@@ -225,6 +227,7 @@ public:
     std::array<SpriteShifter, 8> sprite_shifters;
 
     bool spriteZeroInLine = false;
+    uint8_t sprite0_y = 0xFF;
     uint8_t openBus = 0;
     std::shared_ptr<Cartridge> cart;
     uint16_t mapNametableAddr(uint16_t addr) const; // apply mirroring
