@@ -1,3 +1,4 @@
+
 #include "PPU2C02.h"
 #include "Cartridge.h"
 #include "Bus.h"
@@ -397,6 +398,9 @@ void PPU2C02::getSpritePixel(uint8_t x, uint8_t &pixel, uint8_t &palette, bool &
                 priority = s.priority;
                 isSpriteZero = s.isSpriteZero;
 
+                if (isSpriteZero)
+                    sprite0VisibleThisFrame = true;
+
                 return;
             }
         }
@@ -495,6 +499,7 @@ void PPU2C02::incrementScrollY()
         v = (v & ~0x03E0) | (coarseY << 5);
     }
 }
+
 void PPU2C02::spriteEvaluation(int dot)
 {
     bool odd = dot & 1;
@@ -515,83 +520,84 @@ void PPU2C02::spriteEvaluation(int dot)
         sprite_eval.latch = primaryoam[addr]; // data is read from (primary) OAM
         return;
     }
-    if (!sprite_eval.writesDisabled)
+    if (!sprite_eval.writesDisabled && sprite_eval.found < 8)
     {
-        // PHASE 1: Collect up to 8 sprites into secondary OAM
-        if (sprite_eval.found < 8)
+        if (sprite_eval.m == 0)
         {
-            // ===== RANGE CHECK ONLY on first byte (Y coordinate) =====
-            if (sprite_eval.m == 0)
+            uint8_t spriteY = sprite_eval.latch;
+            if (spriteY >= 240)
             {
-                uint8_t spriteY = sprite_eval.latch;
-                if (spriteY >= 240)
-                {
-                    sprite_eval.n = (sprite_eval.n + 1) & 63;
-                    sprite_eval.m = 0;
-                    if (sprite_eval.n == 0)
-                        sprite_eval.writesDisabled = true;
-                    return;
-                }
-                int h = ppuctrl.spriteSize ? 16 : 8;
-
-                // Correct NES rule uses scanline + 1. Insanely bullshit. Dont ever change this or welcome back to off by one hell.
-                int diff = (scanline_cycle + 1) - spriteY;
-                bool inRange = (diff > 0 && diff <= h);
-
-                if (!inRange)
-                {
-                    // Sprite not in range. Must SKIP the remaining 3 bytes by advancing to the next sprite (n+1)
-                    // The hardware advances the pointer to the start of the next sprite: (n+1, m=0). This seems correct acc to nesdev
-                    sprite_eval.n = (sprite_eval.n + 1) & 63;
-                    sprite_eval.m = 0;
-
-                    // Check for end of Primary OAM
-                    if (sprite_eval.n == 0)
-                    {
-                        sprite_eval.writesDisabled = true; // No more sprites to evaluate/collect
-                    }
-                    return;
-                }
+                sprite_eval.n = (sprite_eval.n + 1) & 63;
+                sprite_eval.m = 0;
+                if (sprite_eval.n == 0)
+                    sprite_eval.writesDisabled = true;
+                return;
             }
-            secondary_oam.data[sprite_eval.found * 4 + sprite_eval.m] = sprite_eval.latch; // data is written to secondary OAM
+            int h = ppuctrl.spriteSize ? 16 : 8;
 
-            sprite_eval.m++; // If the value is in range, set the sprite overflow flag in $2002 and read the next 3 entries of OAM (incrementing 'm' after each byte and incrementing 'n' when 'm' overflows)
-
-            if (sprite_eval.m == 4)
+            // Insanely bullshit. Dont ever change this or welcome back to off by one hell.
+            int diff = scanline_cycle - spriteY;
+            bool inRange = (diff >= 0 && diff < h);
+            static bool prevInRange[64] = {};
+            if (!inRange)
             {
-                secondary_oam_index[sprite_eval.found] = sprite_eval.n;
+                sprite_eval.n = (sprite_eval.n + 1) & 63;
+                sprite_eval.m = 0;
 
-                sprite_eval.m = 0; // overflow
-                sprite_eval.found++;
-                sprite_eval.n++; //  if m = 3, increment n
-
-                if (sprite_eval.n >= 64)
-                    return;
+                // Check for end of Primary OAM
+                if (sprite_eval.n == 0)
+                {
+                    sprite_eval.writesDisabled = true; // No more sprites to evaluate/collect
+                }
+                return;
             }
         }
-        else
+        secondary_oam.data[sprite_eval.found * 4 + sprite_eval.m] = sprite_eval.latch; // data is written to secondary OAM
+
+        sprite_eval.m++; // If the value is in range, set the sprite overflow flag in $2002 and read the next 3 entries of OAM (incrementing 'm' after each byte and incrementing 'n' when 'm' overflows)
+
+        if (sprite_eval.m == 4)
+        {
+            secondary_oam_index[sprite_eval.found] = sprite_eval.n;
+
+            sprite_eval.m = 0; // overflow
+            sprite_eval.found++;
+            sprite_eval.n++; //  if m = 3, increment n
+
+            if (sprite_eval.n >= 64)
+                return;
+        }
+
+        if (sprite_eval.found == 8)
         {
             sprite_eval.writesDisabled = true;
         }
+        return;
     }
     // If already found 8 sprites, any additional in-range sprite sets overflow
-if (sprite_eval.found >= 8)
-{
-    uint8_t spriteY = sprite_eval.latch;
-    int h = ppuctrl.spriteSize ? 16 : 8;
-
-    int diff = (scanline_cycle + 1) - spriteY;
-    if (diff > 0 && diff <= h)
+    // If already found 8 sprites, any additional in-range sprite sets overflow
+    if (sprite_eval.found >= 8 && !odd)
     {
-        ppustatus.spriteOverflow = 1;
-    }
+        // Hardware bug: latch is compared as Y regardless of which byte it came from
+        uint8_t spriteY = sprite_eval.latch;
+        int h = ppuctrl.spriteSize ? 16 : 8;
 
-    // Hardware continues scanning but does not write
-    sprite_eval.n = (sprite_eval.n + 1) & 63;
-    sprite_eval.m = 0;
-    sprite_eval.writesDisabled = true;
-    return;
-}
+        // IMPORTANT: overflow uses scanline
+        int diff = scanline_cycle - spriteY;
+
+        if (diff >= 0 and diff < h)
+        {
+            ppustatus.spriteOverflow = 1;
+            ppustatus.to_byte();
+        }
+
+        // Diagonal increment bug (documented)
+        sprite_eval.m = (sprite_eval.m + 1) & 3;
+        if (sprite_eval.m == 0)
+            sprite_eval.n = (sprite_eval.n + 1) & 63;
+
+        return;
+    }
 }
 
 void PPU2C02::fetchSpriteTile(int dot)
@@ -623,11 +629,12 @@ void PPU2C02::fetchSpriteTile(int dot)
     if (cycle != 7)
         return;
 
-    if (entry.y >= 240)
+    if (dot == 1 && scanline_cycle < 240)
     {
-        sh.valid = false;
-        return;
+        for (auto &s : sprite_shifters)
+            s.valid = false;
     }
+
     int height = ppuctrl.spriteSize ? 16 : 8;
 
     // IMPORTANT: fetch uses *current scanline*, NOT scanline+1. Insanely bullshit. Dont ever changes this or welcome back to off by one hell.
@@ -730,6 +737,20 @@ void PPU2C02::tick()
             nmi_latched = false;
             frame_complete = true;
             suppress = false;
+            if (bgWasVisibleLastFrame && !bgVisibleThisFrame)
+            {
+                bgDisappearFrame = frameCounter;
+            }
+            if (sprite0WasVisibleLastFrame && !sprite0VisibleThisFrame)
+            {
+                sprite0DisappearFrame = frameCounter;
+            }
+
+            sprite0WasVisibleLastFrame = sprite0VisibleThisFrame;
+            sprite0VisibleThisFrame = false;
+            bgWasVisibleLastFrame = bgVisibleThisFrame;
+            bgVisibleThisFrame = false;
+            frameCounter++;
         }
         if (dot >= 280 && dot <= 304 && (ppumask.showBG || ppumask.showSprites))
 
@@ -738,7 +759,6 @@ void PPU2C02::tick()
         }
     }
     if (scanline_cycle == 241 && dot == 1)
-
     {
         if (!suppress)
         {
@@ -782,6 +802,8 @@ void PPU2C02::render_scanline()
     if (visibleScanline && visibleCycle)
     {
         // Helps us choose what to present and when.
+        static bool bgWasVisible = false;
+        static uint8_t bgDisappearFrame = 0;
         uint16_t mask = 0x8000 >> this->x;
         uint8_t p0 = (bg_shift.pattern_lo & mask) ? 1 : 0;
         uint8_t p1 = (bg_shift.pattern_hi & mask) ? 1 : 0;
@@ -802,6 +824,8 @@ void PPU2C02::render_scanline()
             bgPixel = 0;
             bgPalette = 0;
         }
+        if (bgOpaque)
+            bgVisibleThisFrame = true;
 
         uint8_t sprPixel = 0;
         uint8_t sprPalette = 0;
@@ -876,7 +900,6 @@ void PPU2C02::render_scanline()
                 finalPalette = bgPalette;
             }
         }
-
         drawPixel(dot - 1, scanline_cycle, finalPalette, finalPixel);
     }
     if (scanline_cycle >= 0 && scanline_cycle < 240 and dot < 65)

@@ -11,7 +11,7 @@ void Mapper001::reset()
     loadReg = 0;
     loadCount = 0;
 
-    control = 0x1C;
+    control = 0x0C;
 
     chrBank4Lo = 0;
     chrBank4Hi = 0;
@@ -42,10 +42,9 @@ bool Mapper001::cpuMapRead(uint16_t addr, uint32_t &mapped_addr)
         // Fix first bank at $8000, switch at $C000
         if (addr < 0xC000)
             mapped_addr = 0 * 0x4000 + (addr & 0x3FFF);
-
         else
             mapped_addr = prgBank16Hi * 0x4000 + (addr & 0x3FFF);
-        return true;
+        return true; // FIXED: Added return
     }
     else
     {
@@ -72,8 +71,7 @@ bool Mapper001::cpuMapWrite(uint16_t addr, uint8_t data, uint32_t &mapped_addr)
     }
     else
     {
-        loadReg >>= 1;
-        loadReg |= (data & 1) << 4;
+        loadReg = (loadReg >> 1) | ((data & 1) << 4);
         loadCount++;
 
         if (loadCount == 5)
@@ -105,7 +103,7 @@ bool Mapper001::cpuMapWrite(uint16_t addr, uint8_t data, uint32_t &mapped_addr)
                 if (control & 0x10)
                     chrBank4Lo = loadReg & ((nCHRBanks * 2) - 1);
                 else
-                    chrBank8   = loadReg & (nCHRBanks - 1);
+                    chrBank8 = loadReg & (nCHRBanks - 1);
                 break;
 
             case 2: // CHR bank 1
@@ -117,11 +115,11 @@ bool Mapper001::cpuMapWrite(uint16_t addr, uint8_t data, uint32_t &mapped_addr)
             {
                 uint8_t prgMode = (control >> 2) & 0x03;
                 if (prgMode == 0 || prgMode == 1)
-                    prgBank32   = (loadReg >> 1) & ((nPRGBanks / 2) - 1);
+                    prgBank32 = (loadReg >> 1) & (nPRGBanks > 2 ? (nPRGBanks / 2) - 1 : 0);
                 else if (prgMode == 2)
-                    prgBank16Hi = loadReg & (nPRGBanks - 1);
+                    prgBank16Hi = loadReg & (nPRGBanks - 1);  // Mode 2: switch $C000
                 else
-                    prgBank16Lo = loadReg & (nPRGBanks - 1);
+                    prgBank16Lo = loadReg & (nPRGBanks - 1);  // Mode 3: switch $8000
             }
             break;
             }
@@ -131,7 +129,7 @@ bool Mapper001::cpuMapWrite(uint16_t addr, uint8_t data, uint32_t &mapped_addr)
         }
     }
 
-    return false; // mapper handled write, no ROM write
+    return true; // mapper handled write, no ROM write
 }
 
 bool Mapper001::ppuMapRead(uint16_t addr, uint32_t &mapped_addr)

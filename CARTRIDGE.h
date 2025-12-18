@@ -22,8 +22,9 @@ public:
     MIRROR mirror = MIRROR::HORIZONTAL;
     MIRROR getMirror();
     bool imageValid = false;
-    std::vector<uint8_t> vPRGMemory;
-    std::vector<uint8_t> vCHRMemory;
+    std::vector<uint8_t> vPRGMemory; //PGR ROM
+    std::vector<uint8_t> vCHRMemory; //CHR ROM
+    std::vector<uint8_t> vPRGRAM;  // PRG-RAM/SRAM at 0x6000-0x7FFF
 
     std::unique_ptr<Mapper> mapper;
 };

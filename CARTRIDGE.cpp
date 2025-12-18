@@ -61,6 +61,9 @@ Cartridge::Cartridge(const std::string &filename)
         mirror = (header.flags6 & 0x01) ? MIRROR::VERTICAL : MIRROR::HORIZONTAL;
     }
 
+    // Initialize PRG-RAM (8KB SRAM for battery-backed saves)
+    vPRGRAM.resize(8192, 0);
+
     ifs.close();
 
     switch (mapperID)
@@ -101,6 +104,14 @@ bool Cartridge::CPUread(uint16_t addr, uint8_t &data)
         std::cerr << "ERROR: mapper is null in Cartridge::CPUread\n";
         return false;
     }
+
+    // PRG-RAM at 0x6000-0x7FFF
+    if (addr >= 0x6000 && addr < 0x8000)
+    {
+        data = vPRGRAM[addr & 0x1FFF];
+        return true;
+    }
+
     uint32_t mapped_addr;
     if (mapper->cpuMapRead(addr, mapped_addr) && mapped_addr < vPRGMemory.size())
     {
@@ -112,8 +123,15 @@ bool Cartridge::CPUread(uint16_t addr, uint8_t &data)
 
 bool Cartridge::CPUwrite(uint16_t addr, uint8_t data)
 {
+    // PRG-RAM at 0x6000-0x7FFF
+    if (addr >= 0x6000 && addr < 0x8000)
+    {
+        vPRGRAM[addr & 0x1FFF] = data;
+        return true;
+    }
+
     uint32_t mapped_addr;
-    if (mapper->cpuMapWrite(addr,data, mapped_addr) && mapped_addr < vPRGMemory.size())
+    if (mapper->cpuMapWrite(addr, data, mapped_addr) && mapped_addr < vPRGMemory.size())
     {
         if (mapped_addr < vPRGMemory.size())
             vPRGMemory[mapped_addr] = data;
