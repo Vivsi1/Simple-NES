@@ -892,9 +892,7 @@ void CPU6502::JMP(uint16_t address)
 void CPU6502::JSR(uint16_t address)
 {
     push16(PC - 1);
-    cout << "Pushed " << PC-1 << "\n";
     PC = address;
-    cout << "HIT JSR at " << address << "\n";
 }
 
 void CPU6502::LDA(uint16_t address)

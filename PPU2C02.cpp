@@ -626,19 +626,24 @@ void PPU2C02::fetchSpriteTile(int dot)
     default:
         break;
     }
-    if (cycle != 7)
-        return;
-
-    if (dot == 1 && scanline_cycle < 240)
+    if (dot == 257 && scanline_cycle < 240)
     {
         for (auto &s : sprite_shifters)
             s.valid = false;
     }
+    if (cycle != 7)
+        return;
 
     int height = ppuctrl.spriteSize ? 16 : 8;
 
     // IMPORTANT: fetch uses *current scanline*, NOT scanline+1. Insanely bullshit. Dont ever changes this or welcome back to off by one hell.
     int fineY = scanline_cycle - entry.y;
+
+    if (entry.y >= 240 || fineY < 0 || fineY >= height)
+    {
+        sh.valid = false;
+        return;
+    }
 
     int tileRow = 0;
 
@@ -646,10 +651,9 @@ void PPU2C02::fetchSpriteTile(int dot)
 
     if (ppuctrl.spriteSize) // 8×16 sprites
     {
-        tileRow = fineY >> 3;
         if (flipV)
             fineY = 15 - fineY;
-
+        tileRow = fineY >> 3;
         fineY &= 7;
     }
     else // 8×8 sprites
@@ -857,8 +861,8 @@ void PPU2C02::render_scanline()
             ppumask.showBG &&
             ppumask.showSprites &&
             ppustatus.spriteZeroHit == 0 &&
-            diff > 0 &&
-            diff <= spriteHeight &&
+            diff >= 0 &&
+            diff < spriteHeight &&
             scanline_cycle <= 239)
         {
             ppustatus.spriteZeroHit = 1;
